@@ -1,0 +1,21 @@
+{
+  "name": "histograph-db-postgis",
+  "version": "0.0.5",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "standard"
+  },
+  "dependencies": {
+    "fuzzy-dates": "histograph/fuzzy-dates",
+    "histograph-config": "nypl-spacetime/histograph-config",
+    "histograph-uri-normalizer": "histograph/uri-normalizer",
+    "pg": "^4.4.6",
+    "ramda": "^0.19.1"
+  },
+  "devDependencies": {
+    "standard": "^6.0.7"
+  },
+  "author": "Bert Spaan",
+  "license": "MIT"
+}
