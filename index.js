@@ -1,6 +1,6 @@
 var R = require('ramda')
 var pg = require('pg')
-var normalize = require('histograph-uri-normalizer').normalize
+var QueryStream = require('pg-query-stream')
 
 // TODO: PG connection string from config
 // var config = require('histograph-config')
@@ -38,6 +38,8 @@ var createTable = `CREATE TABLE public.${tableName} (
     dataset text NOT NULL,
     name text,
     type text,
+    validSince daterange,
+    validUntil daterange,
     data jsonb,
     geometry geometry,
     CONSTRAINT ${tableName}_pkey PRIMARY KEY (id, dataset)
@@ -47,22 +49,24 @@ var createTable = `CREATE TABLE public.${tableName} (
   CREATE INDEX ${tableName}_type ON ${tableName} (type);
 `
 
-executeQuery(tableExists, null, function (err, rows) {
-  if (err) {
-    console.error('Error connecting to database:', err.message)
-    process.exit(-1)
-  } else {
-    if (!(rows && rows[0].count === '1')) {
-      console.log(`Table "${tableName}" does not exist - creating table...`)
-      executeQuery(createTable, null, function (err) {
-        if (err) {
-          console.error('Error creating table:', err.message)
-          process.exit(-1)
-        }
-      })
+module.exports.initialize = function () {
+  executeQuery(tableExists, null, function (err, rows) {
+    if (err) {
+      console.error('Error connecting to database:', err.message)
+      process.exit(-1)
+    } else {
+      if (!(rows && rows[0].count === '1')) {
+        console.log(`Table "${tableName}" does not exist - creating table...`)
+        executeQuery(createTable, null, function (err) {
+          if (err) {
+            console.error('Error creating table:', err.message)
+            process.exit(-1)
+          }
+        })
+      }
     }
-  }
-})
+  })
+}
 
 function escapeLiteral (str) {
   if (!str) {
@@ -93,22 +97,29 @@ function escapeLiteral (str) {
   return escaped
 }
 
-function toRow (pit) {
-  var id = normalize(pit.id || pit.uri, pit.dataset)
+function rangeString (dateRange) {
+  if (dateRange) {
+    return `[${dateRange[0]}, ${dateRange[1]}]`
+  }
 
+  return null
+}
+
+function toRow (pit, dataset) {
   return {
-    id: `${escapeLiteral(id)}`,
-    dataset: `'${pit.dataset}'`,
-    name: `${escapeLiteral(pit.name)}`,
+    id: escapeLiteral(pit.id),
+    dataset: `'${dataset}'`,
+    name: escapeLiteral(pit.name),
     type: `'${pit.type}'`,
-    data: `${escapeLiteral(JSON.stringify(pit.data))}`,
+    data: escapeLiteral(JSON.stringify(pit.data)),
+    validSince: escapeLiteral(rangeString(pit.validSince)),
+    validUntil: escapeLiteral(rangeString(pit.validUntil)),
     geometry: pit.geometry ? `ST_SetSRID(ST_GeomFromGeoJSON('${JSON.stringify(pit.geometry)}'), 4326)` : 'NULL'
   }
 }
 
 function createUpdateQuery (message) {
-  var pit = Object.assign({dataset: message.dataset}, message.data)
-  var row = toRow(pit)
+  var row = toRow(message.payload, message.meta.dataset)
 
   var columns = R.keys(row)
   var values = R.values(row)
@@ -120,6 +131,8 @@ function createUpdateQuery (message) {
       name = EXCLUDED.name,
       type = EXCLUDED.type,
       data = EXCLUDED.data,
+      validSince = EXCLUDED.validSince,
+      validUntil = EXCLUDED.validUntil,
       geometry = EXCLUDED.geometry;
   `
 
@@ -127,26 +140,38 @@ function createUpdateQuery (message) {
 }
 
 function deleteQuery (message) {
-  var id = escapeLiteral(message.data.id || message.data.uri)
-  var dataset = escapeLiteral(message.dataset)
+  var id = escapeLiteral(message.payload.id)
+  var dataset = escapeLiteral(message.meta.dataset)
 
   var query = `DELETE FROM ${tableName}
     WHERE
       id = ${id} AND
-      dataset = ${dataset};
-  `
+      dataset = ${dataset};`
 
   return query
 }
 
 var actionToQuery = {
-  add: createUpdateQuery,
+  create: createUpdateQuery,
   update: createUpdateQuery,
   delete: deleteQuery
 }
 
 function messageToQuery (message) {
   return actionToQuery[message.action](message)
+}
+
+module.exports.createQueryStream = function (query, callback) {
+  pg.connect(pgConString, function (err, client, done) {
+    if (err) {
+      callback(err)
+    } else {
+      var queryStream = new QueryStream(query)
+      var stream = client.query(queryStream)
+      stream.on('end', done)
+      callback(null, stream, queryStream)
+    }
+  })
 }
 
 module.exports.bulk = function (messages, callback) {

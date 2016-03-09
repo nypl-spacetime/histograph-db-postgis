@@ -7,10 +7,9 @@
     "test": "standard"
   },
   "dependencies": {
-    "fuzzy-dates": "histograph/fuzzy-dates",
     "histograph-config": "nypl-spacetime/histograph-config",
-    "histograph-uri-normalizer": "histograph/uri-normalizer",
     "pg": "^4.4.6",
+    "pg-query-stream": "^1.0.0",
     "ramda": "^0.19.1"
   },
   "devDependencies": {
