@@ -1,12 +1,14 @@
+'use strict'
+
+var config = require('histograph-config')
 var R = require('ramda')
 var pg = require('pg')
 var QueryStream = require('pg-query-stream')
 
-// TODO: PG connection string from config
-// var config = require('histograph-config')
+const tableName = 'pits'
 
 // https://devcenter.heroku.com/articles/getting-started-with-nodejs#provision-a-database
-var pgConString = process.env.DATABASE_URL || 'postgres://postgres:postgres@localhost/histograph'
+var pgConString = process.env.DATABASE_URL || `postgres://${config.postgres.user}:${config.postgres.password}@${config.postgres.host}:${config.postgres.port}/${config.postgres.database}`
 function executeQuery (query, values, callback) {
   pg.connect(pgConString, function (err, client, done) {
     if (err) {
@@ -23,9 +25,6 @@ function executeQuery (query, values, callback) {
     }
   })
 }
-
-// TODO: tableName from config!
-var tableName = 'pits'
 
 var tableExists = `SELECT COUNT(*)
   FROM pg_catalog.pg_tables
