@@ -1,6 +1,6 @@
 'use strict'
 
-var config = require('histograph-config')
+var config = require('spacetime-config')
 var R = require('ramda')
 var pg = require('pg')
 var QueryStream = require('pg-query-stream')
@@ -26,13 +26,21 @@ function executeQuery (query, values, callback) {
   })
 }
 
-var tableExists = `SELECT COUNT(*)
+module.exports.executeQuery = executeQuery
+
+var truncateTable = `
+  TRUNCATE ${tableName};
+`
+
+var tableExists = `
+  SELECT COUNT(*)
   FROM pg_catalog.pg_tables
   WHERE schemaname = 'public'
   AND tablename  = '${tableName}';
 `
 
-var createTable = `CREATE TABLE public.${tableName} (
+var createTable = `
+  CREATE TABLE public.${tableName} (
     id text NOT NULL,
     dataset text NOT NULL,
     name text,
@@ -46,6 +54,7 @@ var createTable = `CREATE TABLE public.${tableName} (
   CREATE INDEX ${tableName}_gix ON ${tableName} USING GIST (geometry);
   CREATE INDEX ${tableName}_dataset ON ${tableName} (dataset);
   CREATE INDEX ${tableName}_type ON ${tableName} (type);
+  CREATE INDEX ${tableName}_id ON ${tableName} (id);
 `
 
 module.exports.initialize = function () {
@@ -63,6 +72,16 @@ module.exports.initialize = function () {
           }
         })
       }
+    }
+  })
+}
+
+module.exports.truncate = function (callback) {
+  executeQuery(truncateTable, null, (err) => {
+    if (err) {
+      callback(err)
+    } else {
+      callback()
     }
   })
 }
